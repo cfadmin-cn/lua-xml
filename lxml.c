@@ -2,6 +2,7 @@
 
 #include <core.h>
 #include <libxml/parser.h>
+#include <libxml/tree.h>
 
 static int xml_array_encode(lua_State *L, xmlNodePtr node);
 static int xml_table_encode(lua_State *L, xmlNodePtr node);
@@ -152,13 +153,33 @@ static int lencode(lua_State *L) {
   return 1;
 }
 
+static inline int decoder(lua_State *L, xmlDocPtr doc, xmlNodePtr node) {
+  return 1;
+}
+
 // 解码
 static int ldecode(lua_State *L) {
-  size_t nlen;
-  const char *tabname = luaL_checklstring(L, 1, &nlen);
-  if (!tabname || nlen < 7)
+  size_t xlen;
+  const char *xmlbuffer = luaL_checklstring(L, 1, &xlen);
+  if (!xmlbuffer || xlen < 7)
     return luaL_error(L, "[XML ERROR]: Invalid string buffer.");
-  return 1;
+  
+  xmlDocPtr doc = xmlReadMemory(xmlbuffer, xlen, NULL, NULL, XML_PARSE_HUGE);
+  if (!doc) {
+    lua_pushnil(L);
+    lua_pushstring(L, "[XML ERROR]: Invalid string buffer.");
+    return 2;
+  }
+    // 根节点
+  xmlNodePtr root = xmlDocGetRootElement(doc);
+  if (!root) {
+    lua_pushnil(L);
+    lua_pushstring(L, "[XML ERROR]: can't find root node element.");
+    return 2;
+  }
+  lua_settop(L, 0);
+  lua_createtable(L, 0, 1);
+  return decoder(L, doc, root);
 }
 
 LUAMOD_API int luaopen_lxml(lua_State *L){
