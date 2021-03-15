@@ -17,4 +17,4 @@ DLL = -lcore -llua -lxml2
 
 build:
 	@$(CC) -o lxml.so lxml.c $(INCLUDES) $(LIBS) $(CFLAGS) $(DLL)
-	@mv *.so ../../
+	@mv *.so ../
