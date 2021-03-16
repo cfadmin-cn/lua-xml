@@ -137,16 +137,19 @@ static int lencode(lua_State *L) {
     len = 3; tn = "xml";
   }
   // 解决GC引用的潜在问题
-  char tabname[len];
-  memmove(tabname, tn, len);
+  char tabname[len + 1];
+  memset(tabname, 0x0, len + 1);
+  memcpy(tabname, tn, len);
 
   // 检查是否取消格式化
   int format = lua_toboolean(L, 3);
   if (!format)  format = 1; else format = 0;
+
   lua_settop(L, 1);
   lua_pushnil(L);
+  // 如果是空表直接给出空表记录
   if(lua_next(L, -2) == 0) {
-    // 如果是空表直接给出空表记录
+    
     lua_pushfstring(L, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<%s></%s>", tabname, tabname);
     return 1;
   }
