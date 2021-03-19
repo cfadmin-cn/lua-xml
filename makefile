@@ -13,7 +13,7 @@ INCLUDES += -I../../src -I../../../src -I/usr/include/libxml2 -I/usr/local/inclu
 LIBS = -L../ -L../../ -L../../../ -L/usr/local/lib
 
 CFLAGS = -O3 -Wall -shared -fPIC
-DLL = -lcore -llua -lxml2
+DLL = -lcore -lxml2
 
 build:
 	@$(CC) -o lxml.so lxml.c $(INCLUDES) $(LIBS) $(CFLAGS) $(DLL)

@@ -1,28 +1,18 @@
 #define LUA_LIB
 
 #include <core.h>
-#include <libxml/parser.h>
 #include <libxml/tree.h>
+#include <libxml/parser.h>
 
 // 设置版本号
 #define lua_setlversion(L, k, v) ({lua_pushliteral(L, k); lua_pushliteral(L, v); lua_rawset(L, -3);})
 // 确保栈上有4个元素，第四个元素必然是`LUA_TTABLE`类型
 #define lua_pushtable(L, name) ({ lua_createtable(L, 16, 16); lua_pushstring(L, (const char*)name); lua_pushvalue(L, -2); lua_rawset(L, -4);})
 
-static int xml_array_encode(lua_State *L, xmlNodePtr node);
+static int xml_array_encode(lua_State *L, xmlNodePtr node, const char* key);
 static int xml_table_encode(lua_State *L, xmlNodePtr node);
 
-static inline void lua_tailcall(lua_State *L, int TYPE, xmlNodePtr node) {
-  if (TYPE == LUA_TNUMBER) {
-    lua_pop(L, 2);
-    xml_array_encode(L, node);
-  } else {
-    lua_pop(L, 2);
-    xml_table_encode(L, node);
-  }
-}
-
-static int xml_array_encode(lua_State *L, xmlNodePtr node) {
+static int xml_array_encode(lua_State *L, xmlNodePtr node, const char* key) {
   lua_pushnil(L);
   if (lua_next(L, -2)) {
     if (lua_type(L, -2) != LUA_TNUMBER) {
@@ -41,29 +31,41 @@ static int xml_array_encode(lua_State *L, xmlNodePtr node) {
     // 根据VALUE类型编码
     switch (lua_type(L, -1)){
       case LUA_TSTRING:    //String类型
-        son = xmlNewNode(NULL, BAD_CAST("items"));
+        son = xmlNewNode(NULL, BAD_CAST(key));
         xmlAddChild(node, son);
         xmlAddChild(son, xmlNewCDataBlock(son->doc, (const xmlChar *)luaL_checklstring(L, -1, &bsize), bsize));
         break;
       case LUA_TNUMBER:    //Number类型
-        xmlNewTextChild(node, NULL, BAD_CAST("items"), BAD_CAST(lua_tostring(L, -1)));
+        xmlNewTextChild(node, NULL, BAD_CAST(key), BAD_CAST(lua_tostring(L, -1)));
         break;
       case LUA_TBOOLEAN:  //Boolean类型
-        son = xmlNewNode(NULL, BAD_CAST("items"));
-        // 设置属性字段boolean = "1"
-        xmlNewProp(son, BAD_CAST"boolean", BAD_CAST "1");
-        // 设置内容为字符串类型的`true`或`false`
-        xmlAddChild(son, xmlNewText(lua_toboolean(L, -1) == 0 ? BAD_CAST("false") : BAD_CAST("true")));
-        // 绑定到父节点.
-        xmlAddChild(node, son);
+        xmlNewTextChild(node, NULL, BAD_CAST(key), lua_toboolean(L, -1) == 0 ? BAD_CAST("false") : BAD_CAST("true"));
+        break;
+      case LUA_TUSERDATA: case LUA_TLIGHTUSERDATA: //指针类型
+        xmlNewTextChild(node, NULL, BAD_CAST(key), BAD_CAST("NULL"));
         break;
       case LUA_TTABLE:    //LUA_TTABLE类型
-        son = xmlNewNode(NULL, BAD_CAST("items"));
-        xmlAddChild(node, son);
         lua_pushnil(L);
-        if (lua_next(L, -2)) {
-          lua_checkstack(L, 4); // 防止调用栈过深导致的错误;
-          lua_tailcall(L, lua_type(L, -2), son);
+        //如果是一张空表, 则直接返回空节点即可;
+        if (!lua_next(L, -2)) {
+          xmlAddChild(node, xmlNewNode(NULL, BAD_CAST(key)));
+          break;
+        }
+        // 如果是一个字典表
+        if (lua_type(L, -2) == LUA_TSTRING) {
+          lua_pop(L, 2); lua_checkstack(L, 4); // 防止调用栈过深导致的错误;
+          son = xmlNewNode(NULL, BAD_CAST(key));
+          xmlAddChild(node, son);
+          xml_table_encode(L, son);
+        // 如果是个数组表
+        } else if (lua_type(L, -2) == LUA_TNUMBER) {
+          lua_pop(L, 2); lua_checkstack(L, 4); // 防止调用栈过深导致的错误;
+          son = xmlNewNode(NULL, BAD_CAST(key));
+          xmlAddChild(node, son);
+          xml_array_encode(L, son, "item");
+        // 其他类型抛出异常.
+        } else {
+          luaL_error(L, "Invalid type in lua table key.");
         }
         break;
       default:
@@ -79,7 +81,7 @@ static int xml_table_encode(lua_State *L, xmlNodePtr node) {
   if (lua_next(L, -2)) {
     if (lua_type(L, -2) == LUA_TNUMBER) {
       lua_pop(L, 2);
-      return xml_array_encode(L, node);
+      return xml_array_encode(L, node, "XML");
     }
     lua_pop(L, 2);
     lua_pushnil(L);
@@ -95,27 +97,37 @@ static int xml_table_encode(lua_State *L, xmlNodePtr node) {
       case LUA_TSTRING:    //String类型(始终为CDATA)
         son = xmlNewNode(NULL, BAD_CAST(lua_tostring(L, -2)));
         xmlAddChild(node, son);
-        xmlAddChild(son, xmlNewCDataBlock(son->doc, (const xmlChar *)luaL_checklstring(L, -1, &bsize), bsize));
+        xmlAddChild(son, xmlNewCDataBlock(son->doc, BAD_CAST(luaL_checklstring(L, -1, &bsize)), bsize));
         break;
       case LUA_TNUMBER:    //Number类型
         xmlNewTextChild(node, NULL, BAD_CAST(lua_tostring(L, -2)), BAD_CAST(lua_tostring(L, -1)));
         break;
       case LUA_TBOOLEAN:  //Boolean类型
-        son = xmlNewNode(NULL, BAD_CAST(lua_tostring(L, -2)));
-        // 设置属性字段boolean = "1"
-        xmlNewProp(son, BAD_CAST("boolean"), BAD_CAST("1"));
-        // 设置内容为字符串类型的`true`或`false`
-        xmlAddChild(son, xmlNewText(lua_toboolean(L, -1) == 0 ? BAD_CAST("false") : BAD_CAST("true")));
-        // 绑定到父节点.
-        xmlAddChild(node, son);
+        xmlNewTextChild(node, NULL, BAD_CAST(lua_tostring(L, -2)), lua_toboolean(L, -1) == 0 ? BAD_CAST("false") : BAD_CAST("true"));
+        break;
+      case LUA_TUSERDATA: case LUA_TLIGHTUSERDATA: //指针类型
+        xmlNewTextChild(node, NULL, BAD_CAST(lua_tostring(L, -2)), BAD_CAST("NULL"));
         break;
       case LUA_TTABLE:    //LUA_TTABLE类型
-        son = xmlNewNode(NULL, BAD_CAST(lua_tostring(L, -2)));
-        xmlAddChild(node, son);
         lua_pushnil(L);
-        if (lua_next(L, -2)) {
-          lua_checkstack(L, 4); // 防止调用栈过深导致的错误;
-          lua_tailcall(L, lua_type(L, -2), son);
+        // 如果是一张空表, 则直接返回空节点即可;
+        if (!lua_next(L, -2)) {
+          xmlAddChild(node, xmlNewNode(NULL, BAD_CAST(lua_tostring(L, -2))));
+          break;
+        }
+        // 如果是一个字典表
+        if (lua_type(L, -2) == LUA_TSTRING) {
+          lua_pop(L, 2); lua_checkstack(L, 4); // 防止调用栈过深导致的错误;
+          son = xmlNewNode(NULL, BAD_CAST(lua_tostring(L, -2)));
+          xmlAddChild(node, son);
+          xml_table_encode(L, son);
+        // 如果是个数组表
+        } else if (lua_type(L, -2) == LUA_TNUMBER) {
+          lua_pop(L, 2); lua_checkstack(L, 4); // 防止调用栈过深导致的错误;
+          xml_array_encode(L, node, lua_tostring(L, -2));
+        // 其他类型抛出异常.
+        } else {
+          luaL_error(L, "Invalid type in lua table key.");
         }
         break;
       default:
