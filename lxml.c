@@ -26,8 +26,10 @@ static int xml_array_encode(lua_State *L, xmlNodePtr node, const char* key) {
   size_t bsize;
   while (lua_next(L, -2)) {
     // 检查Key的类型是否为可序列化类型
-    if (lua_type(L, -2) != LUA_TNUMBER && lua_type(L, -2) != LUA_TSTRING) 
+    if (lua_type(L, -2) != LUA_TNUMBER && lua_type(L, -2) != LUA_TSTRING) {
+      xmlFreeDoc(node->doc);
       return luaL_error(L, "[XML ERROR]: Invalid table key, required (number or string).");
+    }
     // 根据VALUE类型编码
     switch (lua_type(L, -1)){
       case LUA_TSTRING:    //String类型
@@ -69,6 +71,7 @@ static int xml_array_encode(lua_State *L, xmlNodePtr node, const char* key) {
         }
         break;
       default:
+        xmlFreeDoc(node->doc);
         return luaL_error(L, "[XML ERROR]: Invalid table value type, required (`number`/`string`/`boolean`/`table`).");
     }
     lua_pop(L, 1);
@@ -90,8 +93,10 @@ static int xml_table_encode(lua_State *L, xmlNodePtr node) {
   size_t bsize;
   while (lua_next(L, -2)) {
     // 检查Key的类型是否为可序列化类型
-    if (lua_type(L, -2) != LUA_TNUMBER && lua_type(L, -2) != LUA_TSTRING) 
+    if (lua_type(L, -2) != LUA_TNUMBER && lua_type(L, -2) != LUA_TSTRING) {
+      xmlFreeDoc(node->doc);
       return luaL_error(L, "[XML ERROR]: Invalid table key, required (number or string).");
+    }
     // 根据VALUE类型编码
     switch (lua_type(L, -1)){
       case LUA_TSTRING:    //String类型(始终为CDATA)
@@ -127,10 +132,12 @@ static int xml_table_encode(lua_State *L, xmlNodePtr node) {
           xml_array_encode(L, node, lua_tostring(L, -2));
         // 其他类型抛出异常.
         } else {
+          xmlFreeDoc(node->doc);
           luaL_error(L, "Invalid type in lua table key.");
         }
         break;
       default:
+        xmlFreeDoc(node->doc);
         return luaL_error(L, "[XML ERROR]: Invalid table value type, required (`number`/`string`/`boolean`/`table`).");
     }
     lua_pop(L, 1);
