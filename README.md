@@ -1,6 +1,6 @@
 # lua-xml
 
-  Lua xml implementation based on libxml2 useing [cfadmin](https://cfadmin.cn).
+  The lua-xml implementation based on libxml2 is used in the [cfadmin](https://cfadmin.cn) framework.
 
 ## Install
 
