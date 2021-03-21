@@ -7,7 +7,7 @@
 // 设置版本号
 #define lua_setlversion(L, k, v) ({lua_pushliteral(L, k); lua_pushliteral(L, v); lua_rawset(L, -3);})
 // 确保栈上有4个元素，第四个元素必然是`LUA_TTABLE`类型
-#define lua_pushtable(L, name) ({ lua_createtable(L, 16, 16); lua_pushstring(L, (const char*)name); lua_pushvalue(L, -2); lua_rawset(L, -4);})
+#define lua_pushtable(L, name) ({ lua_createtable(L, 16, 16); lua_pushstring(L, (name)); lua_pushvalue(L, -2); lua_rawset(L, -4);})
 
 static int xml_array_encode(lua_State *L, xmlNodePtr node, const char* key);
 static int xml_table_encode(lua_State *L, xmlNodePtr node);
@@ -161,7 +161,6 @@ static int lencode(lua_State *L) {
   lua_pushnil(L);
   // 如果是空表直接给出空表记录
   if(lua_next(L, -2) == 0) {
-    
     lua_pushfstring(L, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<%s></%s>", tabname, tabname);
     return 1;
   }
@@ -187,44 +186,48 @@ static int lencode(lua_State *L) {
 
 static inline void xml_node_dump(lua_State *L, xmlNodePtr node) {
   xmlNodePtr cur_node = NULL;
-  for (cur_node = node; cur_node != NULL; cur_node = cur_node->next) {
-    // if (cur_node->type == XML_ELEMENT_NODE) {
-    //   lua_pushstring(L, cur_node->name);
-    //   if (cur_node->children) {
-    //      && cur_node->children->children
-    //   }
-    //   // if (cur_node->children && cur_node->children->children){
-    //   //   // lua_pushtable(L, cur_node->name);
-    //   // } 
-    //   xml_node_dump(L, cur_node->children);
-    // }
-    // lua_pushstring(L, xmlNodeGetContent(cur_node));
-    // lua_rawset(L, )
-    // printf("[%s] = [%s]\n", node->name, xmlNodeGetContent(cur_node));
-    // if (cur_node->type == XML_ELEMENT_NODE) {
-    //   printf("node type: Element, name: %s\n", cur_node->name);
-    //   lua_pushtable(L, cur_node->name);
-    //   xml_node_dump(L, cur_node->children);
-    //   return;
-    // }
-    // printf("text[%s]: [%s]\n", cur_node->name, xmlNodeGetContent(cur_node));//获取节点值
-    // if (cur_node->type == XML_ELEMENT_NODE){
-    //   printf("1 node type: Element, name: %s\n", cur_node->name);
-    //   printf("1 text[%s]: [%s]\n", cur_node->name, xmlNodeGetContent(cur_node));
-    //   xml_node_dump(L, cur_node->children);
-    // }else if(cur_node->type == XML_TEXT_NODE){
-    //   printf("2. text[%s:%ld]: [%s]\n", cur_node->name, strlen((const char *)xmlNodeGetContent(cur_node)), xmlNodeGetContent(cur_node));//获取节点值
-    // }
-    // if (cur_node->type == XML_ELEMENT_NODE) {
-    //   printf("node type: Element, name: %s\n", cur_node->name);
-    // } else if(cur_node->type == XML_TEXT_NODE) {
-    //   if(!xmlStrcasecmp(node->name,BAD_CAST"from")) {
-    //     printf("2. text[%s:%ld]: [%s]\n", cur_node->name, strlen((const char *)xmlNodeGetContent(cur_node)), xmlNodeGetContent(cur_node));//获取节点值
-    //   }
-    // }
-    // xml_node_dump(L, cur_node->xmlChildrenNode);
+  for (cur_node = node; cur_node; cur_node = cur_node->next) {
+    if (cur_node->type == XML_ELEMENT_NODE) {
+      // 如果没有子节点
+      if (!cur_node->children) {
+        lua_pushstring(L, (const char *)cur_node->name);
+        lua_newtable(L); lua_rawset(L, -3);
+        return ;
+      }
+      // 如果有字节点但是子节点也是`数组`或者`字典`
+      if (cur_node->children->type == XML_ELEMENT_NODE){
+        lua_pushtable(L, (const char *)cur_node->name);
+        xml_node_dump(L, cur_node->children);
+        lua_pop(L, 1);
+        continue;
+      }
+      // printf("not.\n");
+    } 
+    // 如果子节点类型数TEXT或者CDATA需要检查是`数组`表示法或是`字典`表示
+    // 规则是：多个同名节点为`数组`节点, 只有一个数据节点或多个不同名节点则为`字典`节点
+    if (cur_node->next && xmlStrEqual(cur_node->next->name, cur_node->name)) {
+      // printf("开始\n");
+      int index = 1;
+      xmlNodePtr e;
+      xmlNodePtr p = cur_node;
+      const xmlChar *name = p->name;
+      lua_pushtable(L, (const char *)p->name);
+      for (; p && xmlStrEqual(p->name, name); p = p->next) {
+        // printf("array [%s] = [%s]\n", p->name, xmlNodeGetContent(p->children));
+        lua_pushstring(L, (const char *)xmlNodeGetContent(p->children));
+        lua_rawseti(L, -2, index++);
+        e = p;
+      }
+      cur_node = e;
+      lua_pop(L, 1);
+      // printf("结束\n");
+    } else {
+      // printf("table [%s] = [%s]\n", cur_node->name, xmlNodeGetContent(cur_node->children));
+      lua_pushstring(L, (const char *)cur_node->name);
+      lua_pushstring(L, (const char *)xmlNodeGetContent(cur_node));
+      lua_rawset(L, -3);
+    }
   }
-
 }
 
 static inline int xml_decoder(lua_State *L, xmlDocPtr doc) {
@@ -243,15 +246,11 @@ static inline int xml_decoder(lua_State *L, xmlDocPtr doc) {
     return 2;
   }
   lua_settop(L, 0);
-  // 起始 -- 构建根节点表
+  // 构建根节点
   lua_createtable(L, 0, 1);
-  // lua_pushtable(L, root->name);
-  // lua_createtable(L, 16, 16);
-  // lua_pushstring(L, (const char*)root->name);
-  // lua_pushvalue(L, -2);
-  // lua_rawset(L, -4);
-  // 结尾 -- 构建根节点表
-  xml_node_dump(L, root);
+  lua_pushtable(L, (const char *)root->name);
+  // 构建根节点
+  xml_node_dump(L, root->children);
   lua_settop(L, 1);
   return 1;
 }
@@ -265,22 +264,25 @@ static int ldecode(lua_State *L) {
 
   // 消除无用的空格与换行
   int i;
-  for (i = 0; i < xlen; i++) {
-    if (xmlbuffer[i] == '<') {
-      i--; break;
-    }
+  for (i = 0; i < xlen; i++){
+    if (xmlbuffer[i] == '<')
+      break;
   }
-  return xml_decoder(L, xmlReadMemory(xmlbuffer + (i + 1), xlen - (i + 1), NULL, NULL, XML_PARSE_HUGE));
+  if (xlen < 7)
+    return 0;
+  return xml_decoder(L, xmlReadMemory(xmlbuffer + i, xlen - i, NULL, NULL, XML_PARSE_HUGE));
 }
 
 LUAMOD_API int luaopen_lxml(lua_State *L){
   luaL_checkversion(L);
+  // 去除空白符
+  xmlKeepBlanksDefault(0);
+  // 注册方法
   luaL_Reg xml_libs[] = {
     {"encode", lencode},
     {"decode", ldecode},
     {NULL, NULL}
   };
-  xmlKeepBlanksDefault(0);
   luaL_newlib(L, xml_libs);
   // lxml 版本
   lua_setlversion(L, "__VERSION__", "0.1");
