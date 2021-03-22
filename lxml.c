@@ -215,7 +215,7 @@ static inline void xml_node_dump(lua_State *L, xmlNodePtr node) {
     if (cur_node->next && xmlStrEqual(cur_node->next->name, cur_node->name)) {
       // printf("开始\n");
       int index = 1;
-      xmlNodePtr e;
+      xmlNodePtr e = NULL;
       xmlNodePtr p = cur_node;
       const xmlChar *name = p->name;
       lua_pushtable(L, (const char *)p->name);
