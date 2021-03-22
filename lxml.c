@@ -203,9 +203,26 @@ static inline void xml_node_dump(lua_State *L, xmlNodePtr node) {
       }
       // 如果有字节点但是子节点也是`数组`或者`字典`
       if (cur_node->children->type == XML_ELEMENT_NODE){
-        lua_pushtable(L, (const char *)cur_node->name);
-        xml_node_dump(L, cur_node->children);
-        lua_pop(L, 1);
+        if (cur_node->next && xmlStrEqual(cur_node->next->name, cur_node->name)) {
+          int index = 1;
+          xmlNodePtr e = NULL;
+          xmlNodePtr p = cur_node;
+          const xmlChar *name = p->name;
+          // printf("node->name = [%s]\n", name);
+          lua_pushtable(L, (const char *)cur_node->name);
+          for (; p && xmlStrEqual(p->name, name); p = p->next) {
+            lua_newtable(L);
+            xml_node_dump(L, p->children);
+            lua_rawseti(L, -2, index++);
+            e = p;
+          }
+          cur_node = e;
+          lua_pop(L, 1);
+        } else {
+          lua_pushtable(L, (const char *)cur_node->name);
+          xml_node_dump(L, cur_node->children);
+          lua_pop(L, 1);
+        }
         continue;
       }
       // printf("not.\n");
