@@ -292,6 +292,8 @@ static inline int xml_decoder(lua_State *L, xmlDocPtr doc) {
   // 构建根节点
   xml_node_dump(L, root->children);
   lua_settop(L, 1);
+  // 清理内存
+  xmlFreeDoc(doc);
   return 1;
 }
 
@@ -301,13 +303,11 @@ static int ldecode(lua_State *L) {
   const char *xmlbuffer = luaL_checklstring(L, 1, &xlen);
   if (!xmlbuffer || xlen < 7)
     return luaL_error(L, "[XML ERROR]: Invalid string buffer.");
-
   // 消除无用的空格与换行
   int i;
-  for (i = 0; i < xlen; i++){
+  for (i = 0; i < xlen; i++)
     if (xmlbuffer[i] == '<')
       break;
-  }
   if (xlen < 7)
     return 0;
   return xml_decoder(L, xmlReadMemory(xmlbuffer + i, xlen - i, NULL, NULL, XML_PARSE_HUGE));
